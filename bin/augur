@@ -3,6 +3,7 @@ import sys
 from augur import parse, filter, align, tree, refine, ancestral
 from augur import traits, translate, mask, titers, export
 from augur import validate, sequence_traits, clades, version
+from augur import import_beast
 
 if __name__=="__main__":
     import argparse
@@ -195,6 +196,16 @@ if __name__=="__main__":
     validate_parser.add_argument('--json', required=True, nargs='+', help="JSONs to validate")
     validate_parser.add_argument('--new-schema', action="store_true", help="use nexflu JSON schema")
     validate_parser.set_defaults(func=validate.run)
+
+    ## IMPORT_BEAST.PY
+    import_beast_parser = subparsers.add_parser('import-beast', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    import_beast_parser.add_argument('--mcc', required=True, help="BEAST MCC tree")
+    import_beast_parser.add_argument('--most-recent-tip-date', required=True, type=float, help='file name to write tree to')
+    import_beast_parser.add_argument('--time-units', default="years", type=str, help='not yet implemented. Default = years')
+    import_beast_parser.add_argument('--output-tree', required=True, type=str, help='file name to write tree to')
+    import_beast_parser.add_argument('--output-node-data', required=True, type=str, help='file name to write (temporal) branch lengths as node data')
+    import_beast_parser.set_defaults(func=import_beast.run)
+
 
     ## VERSION.PY
     version_parser = subparsers.add_parser(
