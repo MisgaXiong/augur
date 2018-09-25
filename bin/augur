@@ -171,7 +171,7 @@ if __name__=="__main__":
     ## EXPORT.PY
     export_parser =  subparsers.add_parser("export", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     export_parser.add_argument('--tree', '-t', required=True, help="tree to perform trait reconstruction on")
-    export_parser.add_argument('--metadata', required=True, help="tsv file with sequence meta data")
+    export_parser.add_argument('--metadata', help="tsv file with sequence meta data")
     export_parser.add_argument('--reference', required=False, help="reference sequence for export to browser, only vcf")
     export_parser.add_argument('--reference-translations', required=False, help="reference translations for export to browser, only vcf")
     export_parser.add_argument('--node-data', required=True, nargs='+', help="JSON files with meta data for each node")
