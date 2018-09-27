@@ -126,7 +126,7 @@ def parse_beast_tree(data, tipMap, verbose=False):
                 elif 'range' in tr: ## range, best to ignore
                     pass
                     #cur_node.attrs[tr.replace('range','maxima')]=list(map(float,val[1:-1].split(','))) ## list of floats
-                elif 'HPD' in tr: ## highest posterior densities
+                elif 'HPD' in tr and '_R_' not in tr: ## highest posterior densities, excluding Markov rewards
                     cur_node.attrs[tr.replace('95%_HPD','confidence')]=list(map(float,val[1:-1].split(','))) ## list of floats
 
 
@@ -287,7 +287,8 @@ def collect_node_data(tree, root_date_offset, most_recent_tip_date):
         data[n.name]['num_date'] = numeric_date ## num_date is decimal date of node
         data[n.name]['clock_length'] = n.branch_length ## assign beast branch length as regular branch length
         if n.is_terminal()==False:
-            data[n.name]['num_date_confidence'] = [most_recent_tip_date - height for height in n.attrs['height_confidence']] ## convert beast 95% HPDs into decimal date confidences
+            if 'height_confidence' in n.attrs:
+                data[n.name]['num_date_confidence'] = [most_recent_tip_date - height for height in n.attrs['height_confidence']] ## convert beast 95% HPDs into decimal date confidences
         else:
             data[n.name]['posterior'] = 1.0 ## assign posterior of 1.0 to every tip (for aesthetics)
 
@@ -331,7 +332,7 @@ def run(args):
     }
 
     # parse the BEAST MCC tree
-    tree = parse_nexus(tree_path=args.mcc, verbose=True)
+    tree = parse_nexus(tree_path=args.mcc, verbose=False)
     # Phylo.draw_ascii(tree)
 
     # the following commands are lifted from refine.py and mock it's behaviour when not calling treetime
@@ -345,8 +346,7 @@ def run(args):
     # time units need to be adjusted by the most recent tip date
     root_date_offset = get_root_date_offset(tree)
     print("root_date_offset:", root_date_offset, args.time_units)
-
-    print(args.most_recent_tip_date_fmt)
+    
     if args.most_recent_tip_date_fmt=='regex':
         if args.tip_date:
             most_recent_tip = find_most_recent_tip(tree,regex=args.tip_date)
