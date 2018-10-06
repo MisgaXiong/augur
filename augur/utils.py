@@ -135,7 +135,7 @@ def write_json(data, file_name, indent=1):
     success = False
 
     #in case auspice folder does not exist yet
-    if not os.path.exists(os.path.dirname(file_name)):
+    if os.path.dirname(file_name) and not os.path.exists(os.path.dirname(file_name)):
         try:
             os.makedirs(os.path.dirname(file_name))
         except OSError: #Guard against race condition
