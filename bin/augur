@@ -204,7 +204,8 @@ if __name__=="__main__":
     import_beast_parser.add_argument('--time-units', default="years", type=str, help='not yet implemented. Default = years')
     import_beast_parser.add_argument('--most-recent-tip-date-fmt', default="regex", choices=['regex','decimal'], required=True, help='method for finding the most recent tip date. Use "decimal" if the decimal date will be supplied or "regex" (default) if tip dates are encoded in tip names')
     import_beast_parser.add_argument('--tip-date', help='decimal date of most recent tip or regular expression for date (if no value is given defaults to "[0-9]{4}(\-[0-9]{2})*(\-[0-9]{2})*$") if dates can be parsed out of tip names')
-
+    import_beast_parser.add_argument('--verbose', action="store_true")
+    import_beast_parser.add_argument('--recursion-limit', default=False, type=int, help="Set a custom recursion limit (dangerous!)")
     import_beast_parser.add_argument('--output-tree', required=True, type=str, help='file name to write tree to')
     import_beast_parser.add_argument('--output-node-data', required=True, type=str, help='file name to write (temporal) branch lengths as node data')
     import_beast_parser.set_defaults(func=import_beast.run)

@@ -343,6 +343,10 @@ def run(args):
     '''
     print("importing from BEAST MCC tree", args.mcc)
 
+    if args.recursion_limit:
+        print("Setting recursion limit to %d"%(args.recursion_limit))
+        sys.setrecursionlimit(args.recursion_limit)
+
     # node data is the dict that will be exported as json
     node_data = {
         'comment': "Imported from a BEAST MCC tree",
@@ -350,7 +354,7 @@ def run(args):
     }
 
     # parse the BEAST MCC tree
-    tree = parse_nexus(tree_path=args.mcc, verbose=False)
+    tree = parse_nexus(tree_path=args.mcc, verbose=args.verbose)
     # Phylo.draw_ascii(tree)
 
     # the following commands are lifted from refine.py and mock it's behaviour when not calling treetime
