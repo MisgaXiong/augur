@@ -1,16 +1,17 @@
 """Calculate the distance between amino acid sequences across entire genes or at a predefined subset of sites.
 """
-import argparse
 import Bio
 import Bio.Phylo
 from collections import defaultdict
 import copy
 import json
 import numpy as np
-import os
+import pandas as pd
 import sys
 
+from .frequency_estimators import timestamp_to_float
 from .reconstruct_sequences import load_alignments
+from .utils import annotate_parents_for_tree, read_node_data
 
 
 def read_masks(mask_file):
@@ -164,6 +165,66 @@ def get_distances_to_root(tree, sequences_by_node_and_gene, distance_map):
     return distances_by_node
 
 
+def get_distances_to_last_ancestor(tree, sequences_by_node_and_gene, distance_map, latest_date):
+    """Calculate distances between each samples in the given sequences and its last
+    ancestor in a previous season using the given distance map.
+
+    Parameters
+    ----------
+    tree : Bio.Phylo
+        a rooted tree whose node names match the given dictionary of sequences
+        by node and gene
+
+    sequences_by_node_and_gene : dict
+        nucleotide or amino acid sequences by node name and gene
+
+    distance_map : dict
+        site-specific and, optionally, sequence-specific distances between two
+        sequences
+
+    latest_date : pandas.Timestamp
+        latest date to consider a node as a potential ancestor of a given
+        sample; used to define a previous season relative to the most recent
+        samples in the given tree.
+
+    Returns
+    -------
+    dict :
+        distances calculated between each sample in the tree and its last
+        ancestor sequence with distances indexed by node name
+
+    """
+    if latest_date is not None:
+        latest_date = timestamp_to_float(latest_date)
+
+    distances_by_node = {}
+
+    # Calculate distance between each tip and its closest ancestor in the last
+    # season as defined by the given latest date threshold.
+    for node in tree.find_clades(terminal=True):
+        # If the given latest date is not None, skip nodes that were sampled
+        # prior to this date.
+        if latest_date is not None and node.attr["num_date"] < latest_date:
+            continue
+
+        # Find the closest ancestor of this node that was also sampled prior to
+        # the given latest date. Stop searching once we reach the root. If the
+        # latest date requested is None, the immediate parent of each node will
+        # be used.
+        parent = node.parent
+        while parent != tree.root and latest_date is not None and parent.attr["num_date"] > latest_date:
+            parent = parent.parent
+
+        # Calculate distance between current node and its ancestor.
+        distances_by_node[node.name] = get_distance_between_nodes(
+            sequences_by_node_and_gene[parent.name],
+            sequences_by_node_and_gene[node.name],
+            distance_map
+        )
+
+    return distances_by_node
+
+
 def mask_sites(aa, mask):
     return aa[mask[:len(aa)]]
 
@@ -196,13 +257,15 @@ def register_arguments(parser):
     parser.add_argument("--compare-to", choices=["root", "ancestor", "pairwise"], help="type of comparison between samples in the given tree", required=True)
     parser.add_argument("--attribute-name", help="name to store distances associated with the given distance map", required=True)
     parser.add_argument("--map", help="JSON providing the distance map between sites and, optionally, amino acids at those sites", required=True)
+    parser.add_argument("--date-annotations", help="JSON of branch lengths and date annotations from augur refine for samples in the given tree; required for comparisons by latest date")
     parser.add_argument("--latest-date", help="latest date to consider samples for last ancestor or pairwise comparisons (e.g., 2019-01-01); defaults to the current date")
     parser.add_argument("--output", help="JSON file with calculated distances stored by node name and attribute name", required=True)
 
 
 def run(args):
-    # Load tree.
+    # Load tree and annotate parents.
     tree = Bio.Phylo.read(args.tree, "newick")
+    tree = annotate_parents_for_tree(tree)
 
     # Load sequences.
     alignments = load_alignments(args.alignment, args.gene_names)
@@ -215,6 +278,27 @@ def run(args):
 
     # Load the given distance map.
     distance_map = read_distance_map(args.map)
+
+    # Prepare the latest date to compare nodes against.
+    if args.latest_date is None:
+        latest_date = None
+    else:
+        latest_date = pd.Timestamp(args.latest_date)
+
+        # Load date annotations.
+        if args.date_annotations is None:
+            print(
+                "ERROR: date annotations JSON from augur refine (e.g., branch_lengths.json) is required",
+                file=sys.stderr
+            )
+            sys.exit(1)
+
+        date_annotations = read_node_data(args.date_annotations)
+
+        # Annotate tree with date annotations.
+        for node in tree.find_clades():
+            node.attr = date_annotations["nodes"][node.name]
+            node.attr["num_date"] = node.attr["numdate"]
 
     # Use the distance map to calculate distances between all samples in the
     # given tree and the desired target(s).
@@ -232,7 +316,7 @@ def run(args):
             tree,
             sequences_by_node_and_gene,
             distance_map,
-            args.latest_date
+            latest_date
         )
     elif args.compare_to == "pairwise":
         # Calculate distance between each sample and all other samples in a
@@ -241,7 +325,7 @@ def run(args):
             tree,
             sequences_by_node_and_gene,
             distance_map,
-            args.latest_date
+            latest_date
         )
     else:
         pass
