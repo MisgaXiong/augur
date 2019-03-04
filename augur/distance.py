@@ -72,8 +72,11 @@ def get_distance_between_nodes(node_a_sequences, node_b_sequences, distance_map)
     Parameters
     ----------
     node_a_sequences, node_b_sequences : dict
+        sequences by gene name for two nodes (samples) in a tree
 
     distance_map : dict
+        definition of site-specific and, optionally, sequence-specific distances
+        per gene
 
     Returns
     -------
