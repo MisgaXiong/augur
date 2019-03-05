@@ -41,7 +41,8 @@ def read_distance_map(map_file):
 
     >>> sorted(read_distance_map("tests/data/distance_map_weight_per_site.json").items())
     [('default', 0), ('map', {'HA1': {144: 1}})]
-
+    >>> sorted(read_distance_map("tests/data/distance_map_weight_per_site_and_sequence.json").items())
+    [('default', 0.0), ('map', {'SigPep': {0: {('W', 'P'): -8.3}}})]
     """
     # Load the JSON.
     with open(map_file, "r") as fh:
@@ -55,6 +56,13 @@ def read_distance_map(map_file):
     distance_map = copy.deepcopy(json_distance_map)
     for gene, site_weights in json_distance_map["map"].items():
         for site, weights in site_weights.items():
+            # Convert sequence-specific weights to tuples.
+            try:
+                weights = {(weight["from"], weight["to"]): weight["weight"]
+                           for weight in weights}
+            except TypeError:
+                pass
+
             # Convert each one-based site string to a zero-based integer.
             distance_map["map"][gene][int(site) - 1] = weights
             del distance_map["map"][gene][site]
@@ -100,6 +108,16 @@ def get_distance_between_nodes(node_a_sequences, node_b_sequences, distance_map)
     >>> get_distance_between_nodes(node_a_sequences, node_b_sequences, distance_map)
     0.5
 
+    For site- and sequence-specific maps, the order of the input sequences
+    matters; the first sequence is treated as the ancestral sequence while the
+    second is treated as the derived.
+
+    >>> distance_map = {"default": 0.0, "map": {"gene": {2: {('T', 'G'): 0.5}}}}
+    >>> get_distance_between_nodes(node_a_sequences, node_b_sequences, distance_map)
+    0.5
+    >>> distance_map = {"default": 0.0, "map": {"gene": {2: {('T', 'G'): 0.5}}}}
+    >>> get_distance_between_nodes(node_b_sequences, node_a_sequences, distance_map)
+    0.0
     """
     distance_type = type(distance_map["default"])
     distance = distance_type(0)
@@ -118,11 +136,17 @@ def get_distance_between_nodes(node_a_sequences, node_b_sequences, distance_map)
                     try:
                         distance += distance_map["map"][gene][site][(seq_ancestral, seq_derived)]
                     except TypeError:
+                        # The distance map is not sequence-specific, so we
+                        # fallback to the site-specific weight.
                         distance += distance_map["map"][gene][site]
+                    except KeyError:
+                        # The distance map is sequence-specific, but it does not
+                        # have a weight for the given sequence pair.
+                        distance += distance_map["default"]
                 else:
                     distance += distance_map["default"]
 
-    return distance_type(distance)
+    return distance_type(np.round(distance, 2))
 
 
 def get_distances_to_root(tree, sequences_by_node_and_gene, distance_map):
