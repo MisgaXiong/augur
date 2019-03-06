@@ -343,9 +343,9 @@ def register_arguments(parser):
     parser.add_argument("--tree", help="Newick tree", required=True)
     parser.add_argument("--alignment", nargs="+", help="sequence(s) to be used, supplied as FASTA files", required=True)
     parser.add_argument('--gene-names', nargs="+", type=str, help="names of the sequences in the alignment, same order assumed", required=True)
-    parser.add_argument("--compare-to", choices=["root", "ancestor", "pairwise"], help="type of comparison between samples in the given tree", required=True)
-    parser.add_argument("--attribute-name", help="name to store distances associated with the given distance map", required=True)
-    parser.add_argument("--map", help="JSON providing the distance map between sites and, optionally, amino acids at those sites", required=True)
+    parser.add_argument("--compare-to", nargs="+", choices=["root", "ancestor", "pairwise"], help="type of comparison between samples in the given tree", required=True)
+    parser.add_argument("--attribute-name", nargs="+", help="name to store distances associated with the given distance map", required=True)
+    parser.add_argument("--map", nargs="+", help="JSON providing the distance map between sites and, optionally, amino acids at those sites", required=True)
     parser.add_argument("--date-annotations", help="JSON of branch lengths and date annotations from augur refine for samples in the given tree; required for comparisons by latest date")
     parser.add_argument("--latest-date", help="latest date to consider samples for last ancestor or pairwise comparisons (e.g., 2019-01-01); defaults to the current date")
     parser.add_argument("--output", help="JSON file with calculated distances stored by node name and attribute name", required=True)
@@ -364,9 +364,6 @@ def run(args):
     for gene, alignment in alignments.items():
         for record in alignment:
             sequences_by_node_and_gene[record.name][gene] = str(record.seq)
-
-    # Load the given distance map.
-    distance_map = read_distance_map(args.map)
 
     # Prepare the latest date to compare nodes against.
     if args.latest_date is None:
@@ -389,64 +386,71 @@ def run(args):
             node.attr = date_annotations["nodes"][node.name]
             node.attr["num_date"] = node.attr["numdate"]
 
-    # Use the distance map to calculate distances between all samples in the
-    # given tree and the desired target(s).
-    if args.compare_to == "root":
-        # Calculate distance between the root and all samples.
-        distances_by_node = get_distances_to_root(
-            tree,
-            sequences_by_node_and_gene,
-            distance_map
-        )
-    elif args.compare_to == "ancestor":
-        # Calculate distance between the last ancestor for each sample in a
-        # previous season.
-        distances_by_node = get_distances_to_last_ancestor(
-            tree,
-            sequences_by_node_and_gene,
-            distance_map,
-            latest_date
-        )
-    elif args.compare_to == "pairwise":
-        # Calculate distance between each sample and all other samples in a
-        # previous season.
-        try:
-            distances_by_node = get_distances_to_all_pairs(
+    final_distances_by_node = {}
+    distance_map_names = []
+    for compare_to, attribute, distance_map_file in zip(args.compare_to, args.attribute_name, args.map):
+        # Load the given distance map.
+        distance_map = read_distance_map(distance_map_file)
+        distance_map_names.append(distance_map.get("name", distance_map_file))
+
+        # Use the distance map to calculate distances between all samples in the
+        # given tree and the desired target(s).
+        if compare_to == "root":
+            # Calculate distance between the root and all samples.
+            distances_by_node = get_distances_to_root(
+                tree,
+                sequences_by_node_and_gene,
+                distance_map
+            )
+        elif compare_to == "ancestor":
+            # Calculate distance between the last ancestor for each sample in a
+            # previous season.
+            distances_by_node = get_distances_to_last_ancestor(
                 tree,
                 sequences_by_node_and_gene,
                 distance_map,
                 latest_date
             )
-        except DistanceException as e:
-            print("ERROR: %s" % e, file=sys.stderr)
-            sys.exit(1)
-    else:
-        pass
+        elif compare_to == "pairwise":
+            # Calculate distance between each sample and all other samples in a
+            # previous season.
+            try:
+                distances_by_node = get_distances_to_all_pairs(
+                    tree,
+                    sequences_by_node_and_gene,
+                    distance_map,
+                    latest_date
+                )
+            except DistanceException as e:
+                print("ERROR: %s" % e, file=sys.stderr)
+                sys.exit(1)
+        else:
+            pass
 
-    # Map distances to the requested attribute name.
-    # Convert data like:
-    # {
-    #   "A/AbuDhabi/24/2017": 1
-    # }
-    # to data like:
-    #
-    # {
-    #   "A/AbuDhabi/24/2017": {
-    #     "ep": 1
-    #   }
-    # }
-    #
-    final_distances_by_node = {}
-    for node_name, values in distances_by_node.items():
-        final_distances_by_node[node_name] = {
-            args.attribute_name: values
-        }
+        # Map distances to the requested attribute name.
+        # Convert data like:
+        # {
+        #   "A/AbuDhabi/24/2017": 1
+        # }
+        # to data like:
+        #
+        # {
+        #   "A/AbuDhabi/24/2017": {
+        #     "ep": 1
+        #   }
+        # }
+        #
+        for node_name, values in distances_by_node.items():
+            if node_name not in final_distances_by_node:
+                final_distances_by_node[node_name] = {}
+
+            final_distances_by_node[node_name][attribute] = values
 
     # Prepare params for export.
     params = {
         "attribute": args.attribute_name,
         "compare_to": args.compare_to,
-        "map_name": distance_map.get("name", args.map),
+        "map_name": distance_map_names,
         "latest_date": args.latest_date
     }
 
