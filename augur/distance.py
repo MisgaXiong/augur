@@ -14,6 +14,10 @@ from .reconstruct_sequences import load_alignments
 from .utils import annotate_parents_for_tree, read_node_data
 
 
+class DistanceException(Exception):
+    pass
+
+
 def read_masks(mask_file):
     ha_masks = {}
     with open(mask_file) as f:
@@ -190,7 +194,7 @@ def get_distances_to_root(tree, sequences_by_node_and_gene, distance_map):
 
 
 def get_distances_to_last_ancestor(tree, sequences_by_node_and_gene, distance_map, latest_date):
-    """Calculate distances between each samples in the given sequences and its last
+    """Calculate distances between each sample in the given sequences and its last
     ancestor in a previous season using the given distance map.
 
     Parameters
@@ -245,6 +249,67 @@ def get_distances_to_last_ancestor(tree, sequences_by_node_and_gene, distance_ma
             sequences_by_node_and_gene[node.name],
             distance_map
         )
+
+    return distances_by_node
+
+
+def get_distances_to_all_pairs(tree, sequences_by_node_and_gene, distance_map, latest_date):
+    """Calculate distances between each sample in the given sequences and all other
+    samples in previous seasons using the given distance map.
+
+    Parameters
+    ----------
+    tree : Bio.Phylo
+        a rooted tree whose node names match the given dictionary of sequences
+        by node and gene
+
+    sequences_by_node_and_gene : dict
+        nucleotide or amino acid sequences by node name and gene
+
+    distance_map : dict
+        site-specific and, optionally, sequence-specific distances between two
+        sequences
+
+    latest_date : pandas.Timestamp
+        latest date to consider a node for comparison to a given sample; used to
+        define a previous season relative to the most recent samples in the
+        given tree.
+
+    Returns
+    -------
+    dict :
+        distances calculated between each sample in the tree and all samples
+        from previous samples with distances indexed by primary sample name and
+        then past sample name
+
+    """
+    if latest_date is not None:
+        latest_date = timestamp_to_float(latest_date)
+    else:
+        raise DistanceException("a latest date is required for pairwise distance calculations")
+
+    distances_by_node = {}
+
+    # Calculate distance between each tip and all tips in previous seasons as
+    # defined by the given latest date threshold.
+    for node in tree.find_clades(terminal=True):
+        # Skip nodes that were sampled prior to this date.
+        if node.attr["num_date"] < latest_date:
+            continue
+
+        # Distances between this node and other nodes are indexed by the other
+        # node name.
+        distances_by_node[node.name] = {}
+
+        # Find all nodes that were sampled prior to the given latest date.
+        for past_node in tree.find_clades(terminal=True):
+            if past_node.attr["num_date"] < latest_date:
+                # Calculate distance between current node and the past node.
+                distances_by_node[node.name][past_node.name] = get_distance_between_nodes(
+                    sequences_by_node_and_gene[past_node.name],
+                    sequences_by_node_and_gene[node.name],
+                    distance_map
+                )
 
     return distances_by_node
 
@@ -345,12 +410,16 @@ def run(args):
     elif args.compare_to == "pairwise":
         # Calculate distance between each sample and all other samples in a
         # previous season.
-        distances_by_node = get_pairwise_distances(
-            tree,
-            sequences_by_node_and_gene,
-            distance_map,
-            latest_date
-        )
+        try:
+            distances_by_node = get_distances_to_all_pairs(
+                tree,
+                sequences_by_node_and_gene,
+                distance_map,
+                latest_date
+            )
+        except DistanceException as e:
+            print("ERROR: %s" % e, file=sys.stderr)
+            sys.exit(1)
     else:
         pass
 
